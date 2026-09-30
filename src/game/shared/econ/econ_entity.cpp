@@ -728,11 +728,7 @@ bool CEconEntity::ValidateEntityAttachedToPlayer( bool &bShouldRetry )
 
 			char szItemName[ MAX_ITEM_NAME_LENGTH ];
 			ILocalize::ConvertUnicodeToANSI( pwzItemName, szItemName, sizeof( szItemName ) );
-
-#ifdef _DEBUG
-			Warning("Item '%s' attached to %s, but it's not in his inventory.\n", szItemName, pOwner->GetPlayerName() );
-#endif
-			return false;
+			return true;
 		}
 	}
 

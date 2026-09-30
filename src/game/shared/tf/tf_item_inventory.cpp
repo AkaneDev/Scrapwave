@@ -1041,34 +1041,55 @@ void CTFPlayerInventory::SaveLocalLoadout( bool bReset, bool bDefaultToGC )
 //-----------------------------------------------------------------------------
 // Purpose: If we are in mod mode, we track loadout changes locally.
 //-----------------------------------------------------------------------------
-void CTFPlayerInventory::EquipLocal(uint64 ulItemID, equipped_class_t unClass, equipped_slot_t unSlot)
+void CTFPlayerInventory::EquipLocal( uint64 ulItemID, equipped_class_t unClass, equipped_slot_t unSlot )
 {
-	// These interactions normally result from a round-trip with the GC.
-	// We will never get those messages, so we do everything locally.
+    itemid_t ulPreviousItem = m_LoadoutItems[unClass][unSlot];
 
-	// Unequip whatever was previously in the slot.
-	{
-		itemid_t ulPreviousItem = m_LoadoutItems[unClass][unSlot];
-		CEconItemView *pPreviousItem = GetInventoryItemByItemID(ulPreviousItem);
-		if (pPreviousItem) {
-			pPreviousItem->GetSOCData()->UnequipFromClass(unClass);
-		}
-	}
+    CEconItemView *pPreviousItem = GetInventoryItemByItemID( ulPreviousItem );
 
-	// Equip the new item and add it to our loadout.
-	CEconItemView *pItem = GetInventoryItemByItemID(ulItemID);
-	if ( pItem )
-	{
-		pItem->GetSOCData()->Equip(unClass, unSlot);
-	}
+    if ( pPreviousItem )
+    {
+        CEconItem *pPreviousSOC = pPreviousItem->GetSOCData();
 
-	m_LoadoutItems[unClass][unSlot] = ulItemID;
+        printf( "[Scrapwave] EquipLocal: previous item %llu, SOC = %p\n",
+            ulPreviousItem, pPreviousSOC );
+
+        if ( pPreviousSOC )
+        {
+            pPreviousSOC->UnequipFromClass( unClass );
+        }
+        else
+        {
+            printf( "[Scrapwave] WARNING: previous item has no SOC data!\n" );
+        }
+    }
+
+    CEconItemView *pItem = GetInventoryItemByItemID( ulItemID );
+
+    if ( pItem )
+    {
+        CEconItem *pSOC = pItem->GetSOCData();
+
+        printf( "[Scrapwave] EquipLocal: new item %llu, SOC = %p\n",
+            ulItemID, pSOC );
+
+        if ( pSOC )
+        {
+            pSOC->Equip( unClass, unSlot );
+        }
+        else
+        {
+            printf( "[Scrapwave] WARNING: new item has no SOC data!\n" );
+        }
+    }
+
+    m_LoadoutItems[unClass][unSlot] = ulItemID;
 
 #ifdef CLIENT_DLL
-	int activePreset = m_ActivePreset[unClass];
-	m_PresetItems[activePreset][unClass][unSlot] = ulItemID;
+    int activePreset = m_ActivePreset[unClass];
+    m_PresetItems[activePreset][unClass][unSlot] = ulItemID;
 
-	GTFGCClientSystem()->LocalInventoryChanged();
+    GTFGCClientSystem()->LocalInventoryChanged();
 #endif
 }
 
@@ -1090,7 +1111,8 @@ void CTFPlayerInventory::UnequipLocal(uint64 ulItemID)
 //-----------------------------------------------------------------------------
 void CTFPlayerInventory::SOUpdated( const CSteamID & steamIDOwner, const GCSDK::CSharedObject *pObject, GCSDK::ESOCacheEvent eEvent )
 {
-	BaseClass::SOUpdated( steamIDOwner, pObject, eEvent );
+	if ( pObject->GetTypeID() != CEconItem::k_nTypeID )
+    	BaseClass::SOUpdated( steamIDOwner, pObject, eEvent );
 
 #ifdef CLIENT_DLL
 	if ( pObject->GetTypeID() != CEconItem::k_nTypeID )
@@ -1259,6 +1281,9 @@ void CTFPlayerInventory::ConvertOldFormatInventoryToNew( void )
 //-----------------------------------------------------------------------------
 void CTFPlayerInventory::SOCreated( const CSteamID & steamIDOwner, const GCSDK::CSharedObject *pObject, GCSDK::ESOCacheEvent eEvent )
 {
+	if ( pObject->GetTypeID() == CEconItem::k_nTypeID )
+    	return;
+		
 	BaseClass::SOCreated( steamIDOwner, pObject, eEvent );
 
 	if ( pObject->GetTypeID() != CEconItem::k_nTypeID )

@@ -702,5 +702,30 @@ CON_COMMAND_F( econ_show_items_with_tag, "Lists the item definitions that have a
 		}
 	}
 }
+
+//-----------------------------------------------------------------------------
+// Purpose: List all item definitions loaded by Scrapwave
+//-----------------------------------------------------------------------------
+CON_COMMAND_F( scrapwave_list_items, "Lists all item definitions loaded by Scrapwave.", FCVAR_CLIENTDLL )
+{
+    const CEconItemSchema::ItemDefinitionMap_t &mapItemDefs =
+        GetItemSchema()->GetItemDefinitionMap();
+
+    Msg( "=== Scrapwave Item Definitions ===\n" );
+
+    FOR_EACH_MAP_FAST( mapItemDefs, i )
+    {
+        const CEconItemDefinition *pItemDef = mapItemDefs[i];
+
+        if ( !pItemDef )
+            continue;
+
+        Msg( "[%d] %s\n",
+            mapItemDefs.Key( i ),
+            pItemDef->GetDefinitionName() );
+    }
+
+    Msg( "=== End Item Definitions ===\n" );
+}
 #endif // CLIENT_DLL
 

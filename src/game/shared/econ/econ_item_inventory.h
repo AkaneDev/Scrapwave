@@ -55,6 +55,26 @@ public:
 	virtual void SOCacheUnsubscribed( const CSteamID & steamIDOwner, GCSDK::ESOCacheEvent eEvent ) OVERRIDE { InventoryUpdated( NULL ); }
 };
 
+class CScrapwaveSOCache : public GCSDK::CSharedObjectCache
+{
+public:
+    CScrapwaveSOCache() {}
+
+    virtual const CSteamID &GetOwner() const OVERRIDE
+    {
+        return m_Owner;
+    }
+
+protected:
+    virtual GCSDK::CSharedObjectTypeCache *AllocateTypeCache( int nClassID ) const OVERRIDE
+    {
+        return new GCSDK::CSharedObjectTypeCache( nClassID );
+    }
+
+private:
+    CSteamID m_Owner;
+};
+
 //-----------------------------------------------------------------------------
 // Purpose: A single player's inventory. 
 //		On the client, the inventory manager contains an instance of this for the local player.
@@ -100,6 +120,7 @@ public:
 
 	// Finds the first item in our backpack with match itemdef
 	CEconItemView		*FindFirstItembyItemDef( item_definition_index_t iItemDef );
+	void                 BuildScrapwaveSyntheticInventory();
 
 	// Used to reject items on the backend for inclusion into this inventory.
 	// Mostly used for division of bags into different in-game inventories.
@@ -142,6 +163,7 @@ protected:
 	void				RequestInventory( CSteamID pSteamID );
 	void				AddListener( GCSDK::ISharedObjectListener *pListener );
 	virtual bool		AddEconItem( CEconItem * pItem, bool bUpdateAckFile, bool bWriteAckFile, bool bCheckForNewItems );
+	virtual bool        AddEconItemSW( CEconItem *pItem );
 	virtual void		RemoveItem( itemid_t iItemID );
 	bool				FilloutItemFromEconItem( CEconItemView *pScriptItem, CEconItem *pEconItem );
 	void				SendInventoryUpdateEvent();
@@ -181,7 +203,8 @@ protected:
 	int			m_iPendingRequests;
 	bool		m_bGotItemsFromSteam;
 
-	GCSDK::CGCClientSharedObjectCache	  *m_pSOCache;
+	GCSDK::CGCClientSharedObjectCache *m_pSOCache;
+	CScrapwaveSOCache *m_pSyntheticSOCache;
 
 	CUtlVector<GCSDK::ISharedObjectListener *> m_vecListeners;
 

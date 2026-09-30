@@ -9,6 +9,7 @@
 #include "vgui/ILocalize.h"
 #include "tier3/tier3.h"
 #include "econ_item_system.h"
+#include "econ_item_tools.h"
 #include "econ_item.h"
 #include "econ_gcmessages.h"
 #include "shareddefs.h"
@@ -1276,6 +1277,7 @@ CPlayerInventory::CPlayerInventory( void )
 	m_iPendingRequests = 0;
 	m_aInventoryItems.Purge();
 	m_pSOCache = NULL;
+	m_pSyntheticSOCache = NULL;
 }
 
 //-----------------------------------------------------------------------------
@@ -1330,6 +1332,11 @@ void CPlayerInventory::SOClear()
 	// and that should have cleared the pointer
 	Assert( m_pSOCache == NULL);
 	m_pSOCache = NULL;
+	if ( m_pSyntheticSOCache )
+{
+	delete m_pSyntheticSOCache;
+	m_pSyntheticSOCache = NULL;
+}
 }
 
 //-----------------------------------------------------------------------------
@@ -1419,7 +1426,7 @@ void CPlayerInventory::RequestInventory( CSteamID pSteamID )
 	// If we don't already have an SO cache, then ask the GC for one,
 	// and start listening to it.  We will receive our "subscribed" message
 	// when the data is valid
-	GCClientSystem()->GetGCClient()->AddSOCacheListener( m_OwnerID, this );
+	BuildScrapwaveSyntheticInventory();
 }
 
 void CPlayerInventory::AddListener( GCSDK::ISharedObjectListener *pListener )
@@ -1521,6 +1528,56 @@ bool CPlayerInventory::AddEconItem( CEconItem * pItem, bool bUpdateAckFile, bool
 	return true;
 }
 
+bool CPlayerInventory::AddEconItemSW( CEconItem *pItem )
+{
+	if ( !pItem )
+		return false;
+
+	CEconItemView newItem;
+
+	if ( !FilloutItemFromEconItem( &newItem, pItem ) )
+		return false;
+
+	// Scrapwave synthetic items are not stored in an SO cache.
+	// Keep the actual CEconItem directly on the view so
+	// CEconItemView::GetSOCData() can return it.
+	newItem.SetNonSOEconItem( pItem );
+
+	int iIdx = m_aInventoryItems.Insert( newItem );
+
+	DirtyItemHandles();
+
+	ItemHasBeenUpdated(
+		&m_aInventoryItems[iIdx],
+		false,
+		false
+	);
+
+#ifdef CLIENT_DLL
+
+	// Update map of item defs to items
+	AddToMapVec(
+		m_mapItemDefsToItems,
+		&m_aInventoryItems[iIdx],
+		newItem.GetItemDefIndex()
+	);
+
+	// Update map of paintkits to items
+	uint32 nPaintkitDefindex = 0;
+
+	if ( GetPaintKitDefIndex( &newItem, &nPaintkitDefindex ) )
+	{
+		AddToMapVec(
+			m_mapPaintkitsToItems,
+			&m_aInventoryItems[iIdx],
+			nPaintkitDefindex
+		);
+	}
+
+#endif
+
+	return true;
+}
 
 //-----------------------------------------------------------------------------
 // Purpose: Creates a script item and associates it with this econ item
@@ -1682,7 +1739,7 @@ void CPlayerInventory::SOCacheSubscribed( const CSteamID & steamIDOwner, GCSDK::
 
 	DirtyItemHandles();
 
-	// Locate the cache that was just subscribed to
+	
 	m_pSOCache = GCClientSystem()->GetSOCache( m_OwnerID );
 	if ( m_pSOCache == NULL )
 	{
@@ -1690,16 +1747,17 @@ void CPlayerInventory::SOCacheSubscribed( const CSteamID & steamIDOwner, GCSDK::
 		return;
 	}
 
-	// add all the items already in the inventory
-	CSharedObjectTypeCache *pTypeCache = m_pSOCache->FindTypeCache( CEconItem::k_nTypeID );
-	if( pTypeCache )
-	{
-		for( uint32 unItem = 0; unItem < pTypeCache->GetCount(); unItem++ )
-		{
-			CEconItem *pItem = (CEconItem *)pTypeCache->GetObject( unItem );
-			AddEconItem(pItem, true, false, true );
-		}
-	}
+	// Scrapwave: Do not import the Steam TF2 inventory.
+	// Players will receive a synthetic inventory instead.
+	// CSharedObjectTypeCache *pTypeCache = m_pSOCache->FindTypeCache( CEconItem::k_nTypeID );
+	// if( pTypeCache )
+	// {
+	// 	for( uint32 unItem = 0; unItem < pTypeCache->GetCount(); unItem++ )
+	// 	{
+	// 		CEconItem *pItem = (CEconItem *)pTypeCache->GetObject( unItem );
+	// 		AddEconItem(pItem, true, false, true );
+	// 	}
+	// }
 
 	m_bGotItemsFromSteam = true;
 
@@ -1848,6 +1906,97 @@ bool CPlayerInventory::FilloutItemFromEconItem( CEconItemView *pScriptItem, CEco
 	return true;
 }
 
+void CPlayerInventory::BuildScrapwaveSyntheticInventory()
+{
+	m_aInventoryItems.Purge();
+	DirtyItemHandles();
+
+	if ( m_pSyntheticSOCache )
+	{
+		delete m_pSyntheticSOCache;
+		m_pSyntheticSOCache = NULL;
+	}
+
+	m_pSyntheticSOCache = new CScrapwaveSOCache;
+
+	const CEconItemSchema::ItemDefinitionMap_t &mapItemDefs =
+		GetItemSchema()->GetItemDefinitionMap();
+
+	FOR_EACH_MAP_FAST( mapItemDefs, i )
+	{
+		const CEconItemDefinition *pItemDef = mapItemDefs[i];
+
+		if ( !pItemDef )
+			continue;
+			
+		if ( pItemDef->GetTypedEconTool<CEconTool_WrappedGift>() ||
+			pItemDef->GetTypedEconTool<CEconTool_Gift>() ||
+			pItemDef->GetTypedEconTool<CEconTool_GiftWrap>() )
+			continue;
+
+		const CTFItemDefinition *pTFItemDef = static_cast<const CTFItemDefinition *>( pItemDef );
+
+		bool bWeaponSlot = false;
+
+		for ( int iClass = TF_FIRST_NORMAL_CLASS; iClass < TF_LAST_NORMAL_CLASS; ++iClass )
+		{
+			int iSlot = pTFItemDef->GetLoadoutSlot( iClass );
+
+			if ( iSlot == LOADOUT_POSITION_PRIMARY ||
+				iSlot == LOADOUT_POSITION_SECONDARY ||
+				iSlot == LOADOUT_POSITION_MELEE ||
+				iSlot == LOADOUT_POSITION_UTILITY ||
+				iSlot == LOADOUT_POSITION_BUILDING ||
+				iSlot == LOADOUT_POSITION_PDA ||
+				iSlot == LOADOUT_POSITION_PDA2 || 
+				iSlot == LOADOUT_POSITION_ACTION ||
+				iSlot == LOADOUT_POSITION_HEAD ||
+				iSlot == LOADOUT_POSITION_MISC ||
+				iSlot == LOADOUT_POSITION_TAUNT ||
+				iSlot == LOADOUT_POSITION_MISC2
+			)
+			{
+				bWeaponSlot = true;
+				break;
+			}
+		}
+
+		// if (pItemDef->IsTool())
+		// {
+		// 	continue;
+		// }
+
+		if ( !bWeaponSlot )
+			continue;
+
+		CEconItem *pItem = new CEconItem;
+
+		pItem->SetItemID(
+			1000000000ULL + mapItemDefs.Key( i )
+		);
+
+		pItem->SetDefinitionIndex(
+			pItemDef->GetDefinitionIndex()
+		);
+
+		pItem->SetItemLevel( 42069 );
+		pItem->SetQuality( pItemDef->GetQuality() );
+
+		pItem->SetInventoryToken(
+			mapItemDefs.Key( i )
+		);
+
+		if ( !AddEconItemSW( pItem ) )
+		{
+			delete pItem;
+			continue;
+		}
+	}
+
+	m_bGotItemsFromSteam = true;
+
+	ResortInventory();
+}
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -2039,19 +2188,27 @@ void CPlayerInventory::DirtyItemHandles()
 	}
 }
 
-//-----------------------------------------------------------------------------
-// Purpose: Get the item object cache data for the specified item
-//-----------------------------------------------------------------------------
-CEconItem	*CPlayerInventory::GetSOCDataForItem( itemid_t iItemID ) 
-{ 
-	if ( !m_pSOCache )
-		return NULL;
-
-	CEconItem soIndex;
-	soIndex.SetItemID( iItemID );
-	return (CEconItem *)m_pSOCache->FindSharedObject( soIndex );
+static bool IsScrapwaveSyntheticItemID( itemid_t iItemID )
+{
+	return iItemID != INVALID_ITEM_ID &&
+		   iItemID >= 1000000000ULL;
 }
 
+CEconItem *CPlayerInventory::GetSOCDataForItem( itemid_t iItemID )
+{
+    if ( m_pSOCache )
+    {
+        CEconItem soIndex;
+        soIndex.SetItemID( iItemID );
+
+        CEconItem *pItem =
+            (CEconItem *)m_pSOCache->FindSharedObject( soIndex );
+
+        if ( pItem )
+            return pItem;
+    }
+    return NULL;
+}
 #if defined (_DEBUG) && defined(CLIENT_DLL)
 CON_COMMAND_F( item_deleteall, "WARNING: Removes all of the items in your inventory.", FCVAR_CHEAT )
 {

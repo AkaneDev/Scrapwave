@@ -3444,7 +3444,7 @@ void CTFPlayer::UpdateInventory( bool bInit )
 	if ( IsFakeClient() )
 		return;
 
-	if ( bInit || !m_Inventory.GetSOC() )
+	if ( bInit || ( !m_Inventory.GetSOC() && !m_Inventory.RetrievedInventoryFromSteam() ) )
 	{
 		if ( steamgameserverapicontext->SteamGameServer() )
 		{
@@ -3456,12 +3456,13 @@ void CTFPlayer::UpdateInventory( bool bInit )
 		}
 	}
 
-	// If we have an SOCache, we've got a connection to the GC
-	bool bInvalid = true;
+	bool bInvalid = !m_Inventory.RetrievedInventoryFromSteam();
+
 	if ( m_Inventory.GetSOC() )
 	{
 		bInvalid = m_Inventory.GetSOC()->BIsInitialized() == false;
 	}
+
 	m_Shared.SetLoadoutUnavailable( bInvalid );
 #endif
 }
@@ -4902,6 +4903,20 @@ CEconItemView *CTFPlayer::GetLoadoutItem( int iClass, int iSlot, bool bReportWhi
 	}
 
 	CEconItemView *pItem = m_Inventory.GetItemInLoadout( iClass, iSlot );
+
+	if ( pItem )
+	{
+		DevMsg( "[Scrapwave] GetLoadoutItem class=%d slot=%d item=%llu def=%d valid=%d\n",
+			iClass,
+			iSlot,
+			(unsigned long long)pItem->GetItemID(),
+			pItem->GetItemDefIndex(),
+			pItem->IsValid() );
+	}
+	else
+	{
+		DevMsg( "[Scrapwave] GetLoadoutItem class=%d slot=%d -> NULL\n", iClass, iSlot );
+	}
 
 	// Check to see if this item passes the tournament rules (in whitelist/or normal quality).
 	// If it doesn't, we fall back to the base item for the loadout slot.
