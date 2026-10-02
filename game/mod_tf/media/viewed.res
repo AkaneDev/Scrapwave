@@ -6,6 +6,6 @@
 	}
 	"ctf_2fort"
 	{
-		"viewed"		"12"
+		"viewed"		"14"
 	}
 }

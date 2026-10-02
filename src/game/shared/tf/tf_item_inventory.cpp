@@ -1283,7 +1283,7 @@ void CTFPlayerInventory::SOCreated( const CSteamID & steamIDOwner, const GCSDK::
 {
 	if ( pObject->GetTypeID() == CEconItem::k_nTypeID )
     	return;
-		
+
 	BaseClass::SOCreated( steamIDOwner, pObject, eEvent );
 
 	if ( pObject->GetTypeID() != CEconItem::k_nTypeID )

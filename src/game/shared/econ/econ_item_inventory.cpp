@@ -1464,11 +1464,20 @@ void AddToMapVec( MapType& mapVec, const CEconItemView* pItem, KeyType key )
 	mapVec[ idx ].AddToTail( pItem->GetItemID() );
 }
 
+bool CPlayerInventory::TestAddEconItem( CEconItem *pItem )
+{
+    return AddEconItem( pItem, false, false, true );
+}
 //-----------------------------------------------------------------------------
 // Purpose: Helper function to add a new item for a econ item
 //-----------------------------------------------------------------------------
 bool CPlayerInventory::AddEconItem( CEconItem * pItem, bool bUpdateAckFile, bool bWriteAckFile, bool bCheckForNewItems )
 {
+	printf("[Scrapwave] Adding item to inventory: %llu\n", pItem->GetItemID() );
+	printf("[Scrapwave] Reason For adding to inventory: %d\n", GetUnacknowledgedReason( pItem->GetInventoryToken() ) );
+	if ( GetUnacknowledgedReason( pItem->GetInventoryToken() ) == UNACK_ITEM_DROPPED )
+    	return false;
+
 	CEconItemView newItem;
 	if( !FilloutItemFromEconItem( &newItem, pItem ) )
 	{
@@ -1527,6 +1536,34 @@ bool CPlayerInventory::AddEconItem( CEconItem * pItem, bool bUpdateAckFile, bool
 #endif
 	return true;
 }
+
+#ifndef CLIENT_DLL
+CON_COMMAND_F( scrapwave_test_drop, "Tests the dropped-item filter.", FCVAR_CHEAT )
+{
+    CPlayerInventory inventory;
+
+    CEconItem item;
+    item.SetItemID( 999999999 );
+    item.SetDefinitionIndex( 13 );
+    item.SetItemLevel( 1 );
+    item.SetQuality( 0 );
+    item.SetInventoryToken(
+        GetUnacknowledgedPositionFor( UNACK_ITEM_DROPPED )
+    );
+
+    Msg( "[Scrapwave] Testing dropped item filter...\n" );
+	printf( "[Scrapwave] Item ID: %llu\n", item.GetItemID() );
+
+    if ( !inventory.TestAddEconItem( &item ) ) {
+        Msg( "[Scrapwave] Dropped item rejected.\n" );
+		printf("[Scrapwave] Rejected Item");
+	} else {
+        Msg( "[Scrapwave] Dropped item ACCEPTED.\n" );
+		printf("[Scrapwave] Accepted Item");
+	}
+
+}
+#endif
 
 bool CPlayerInventory::AddEconItemSW( CEconItem *pItem )
 {

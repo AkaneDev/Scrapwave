@@ -121,6 +121,7 @@ public:
 	// Finds the first item in our backpack with match itemdef
 	CEconItemView		*FindFirstItembyItemDef( item_definition_index_t iItemDef );
 	void                 BuildScrapwaveSyntheticInventory();
+	bool                 TestAddEconItem( CEconItem *pItem );
 
 	// Used to reject items on the backend for inclusion into this inventory.
 	// Mostly used for division of bags into different in-game inventories.
